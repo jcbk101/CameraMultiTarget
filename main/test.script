@@ -1,0 +1,117 @@
+go.property("expand", vmath.vector3(0))
+
+
+function init(self)
+	camera.acquire_focus("/cam#cam")
+	msg.post("@render:", "use_camera_projection")
+
+	self.pos2 = go.get_position("/go2")
+	self.pos1 = go.get_position("/go1")
+
+	-- Random movement indirectly added to object #2	
+	go.animate("#test", "expand.x", go.PLAYBACK_LOOP_PINGPONG, 568, go.EASING_OUTQUAD, 6)
+	go.animate("#test", "expand.y", go.PLAYBACK_LOOP_PINGPONG, 320, go.EASING_LINEAR, 10)
+
+	-- Random movement directly added to object #1
+	go.animate("/go1", "position.x", go.PLAYBACK_LOOP_PINGPONG, self.pos1.x - 568, go.EASING_LINEAR, 20)
+	go.animate("/go1", "position.y", go.PLAYBACK_LOOP_PINGPONG, self.pos1.y - 320, go.EASING_LINEAR, 8)
+end
+
+
+-------------------------------
+-- Helper function: Thanks, Insality!
+-------------------------------
+function clamp(a, min, max)
+	if min > max then
+		min, max = max, min
+	end
+
+	if a >= min and a <= max then
+		return a
+	elseif a < min then
+		return min
+	else
+		return max
+	end
+end
+
+
+-------------------------------
+-- Camera tracking two objects
+-- Can add more
+-------------------------------
+local function cameraTracking(self, screen_width, screen_height, min_zoom, max_zoom)
+	
+	local bpos = go.get_position()
+	local ppos = go.get_position("/go2")
+	local bsize = go.get("/go1#sprite", "size")
+	local psize = go.get("/go2#sprite", "size")
+	-- Center the camera in between the two
+	local pos = (bpos + ppos) * 0.5
+	-- Get initial distance between the two objects
+	local distance = (ppos - bpos)
+	local zoom = go.get("/cam#cam", "orthographic_zoom")
+	local z = 0
+	--
+	local min_z = min_zoom or 0.35
+	local max_z = max_zoom or 1
+
+	-- Add margin to the bounds box
+	distance = distance + vmath.vector3(bsize.x + psize.x, bsize.y + psize.y, 0)
+
+	-- Set zoom based on Bounds size vs Screen size
+	-- If more of the width should be cover, scale according to X
+	if math.abs(distance.x) > math.abs(distance.y) then
+		z = clamp(screen_width / math.abs(distance.x), min_z, max_z)
+	else
+		-- If more of the height should be cover, scale according to Y
+		z = clamp(screen_height / math.abs(distance.y), min_z, max_z)
+	end
+
+	-- Get a lerp'd value so zooming in/out is smoother
+	zoom = vmath.lerp(0.15, zoom, z * 1)
+
+	--	print("ZOOM: ", zoom, math.abs(distance.x), math.abs(distance.y))
+
+	-- Adjust camera	
+	go.set("/cam#cam","orthographic_zoom", zoom)
+	go.set_position(vmath.vector3(pos.x, pos.y, pos.z), "/cam")
+
+	----------------------------------------------
+	-- Draw the bounding box for debug purposes
+	----------------------------------------------
+
+	-- Adjust distance simply to form the bounding box only
+	distance = distance * 0.5
+
+	-- Top
+	msg.post("@render:", "draw_line", 
+	{ 
+		start_point = vmath.vector3(pos.x - distance.x, pos.y + distance.y, 0), end_point = vmath.vector3(pos.x + distance.x, pos.y + distance.y, 0), color = vmath.vector4(1, 0, 0, 1) 
+	})
+	-- Bottom
+	msg.post("@render:", "draw_line", 
+	{ 
+		start_point = vmath.vector3(pos.x - distance.x, pos.y - distance.y, 0), end_point = vmath.vector3(pos.x + distance.x, pos.y - distance.y, 0), color = vmath.vector4(0, 1, 0, 1) 
+	})
+	-- Left
+	msg.post("@render:", "draw_line", 
+	{ 
+		start_point = vmath.vector3(pos.x - distance.x, pos.y + distance.y, 0), end_point = vmath.vector3(pos.x - distance.x, pos.y - distance.y, 0), color = vmath.vector4(0, 0, 1, 1) 
+	})
+	-- Right
+	msg.post("@render:", "draw_line", 
+	{ 
+		start_point = vmath.vector3(pos.x + distance.x, pos.y + distance.y, 0), end_point = vmath.vector3(pos.x + distance.x, pos.y - distance.y, 0), color = vmath.vector4(1, .75, 0, 1) 
+	})
+end
+
+
+function fixed_update(self, dt)
+	local startpos = vmath.vector3(self.pos1.x, self.pos1.y, self.pos1.z)
+	local endpos = vmath.vector3(self.pos2.x + self.expand.x, self.pos2.y + self.expand.y, self.pos2.z)
+	local pos = vmath.lerp(2, startpos, endpos)
+
+	go.set_position(pos, "/go2")
+	cameraTracking(self, 1136, 640)
+end 
